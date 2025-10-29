@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Calendrier de l'Avent — Puzzle (thème Noël)</title>
+  <style>
+    :root{--bg:#0b2a12;--card:#fff;--accent:#c8102e}
+    html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:linear-gradient(180deg,#05221a 0%, #083226 60%, #112f2a 100%);color:#fff;display:flex;align-items:center;justify-content:center;padding:24px}
+    .wrap{width:100%;max-width:980px;background:rgba(255,255,255,0.03);border-radius:16px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,0.6)}
+    header{display:flex;gap:12px;align-items:center}
+    h1{margin:0;font-size:20px}
+    p.lead{margin:6px 0 18px;color:#dbe9df}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .btn{background:var(--accent);border:none;color:white;padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.12)}
+    .grid-wrap{display:flex;gap:20px;align-items:flex-start}
+    .puzzle{background:#fff;border-radius:8px;padding:8px}
+    #board{width:560px;height:420px;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(4,1fr);gap:4px;}
+    .cell{background:#bbb;position:relative;overflow:hidden;cursor:pointer;border-radius:4px}
+    .cell img{width:100%;height:100%;object-fit:cover;display:block;transform:scale(1.02)}
+    .cell.revealed{box-shadow:0 6px 18px rgba(0,0,0,0.4);cursor:default}
+    .mask{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.4));display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+    .meta{flex:1}
+    .actions{display:flex;flex-direction:column;gap:8px;min-width:260px}
+    input[type=file]{display:none}
+    .filelabel{padding:8px;border-radius:8px;border:1px dashed rgba(255,255,255,0.08);text-align:center;cursor:pointer}
+    .sharebox{background:rgba(255,255,255,0.03);padding:8px;border-radius:8px}
+    small{color:#cfe7d8}
+    footer{margin-top:14px;color:#cfe7d8;font-size:13px}
+    /* christmas touch */
+    .christmas{display:flex;gap:8px;align-items:center}
+    .tree{width:48px;height:48px;border-radius:8px;background:linear-gradient(180deg,#1a6a2a,#0c3f17);display:flex;align-items:center;justify-content:center;font-weight:800}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="tree">🎄</div>
+      <div class="meta">
+        <h1>Calendrier de l'Avent — Puzzle (thème Noël)</h1>
+        <p class="lead">Clique sur une case pour la dévoiler. Garde le prototype privé ou partage un lien secret.</p>
+      </div>
+    </header>
+
+    <div class="controls">
+      <label class="filelabel btn secondary" title="Changer l'image">
+        Changer la photo
+        <input id="file" type="file" accept="image/*">
+      </label>
+
+      <button class="btn" id="genLink">Générer un lien secret</button>
+      <button class="btn secondary" id="resetBtn">Réinitialiser</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <small>Thème : Noël</small>
+      </div>
+    </div>
+
+    <div class="grid-wrap">
+      <div class="puzzle">
+        <div id="board" aria-label="puzzle grid"></div>
+      </div>
+
+      <div class="actions">
+        <div class="sharebox">
+          <div><strong>Statut :</strong> <span id="status">Chargement...</span></div>
+          <div style="margin-top:8px"><strong>Lien secret :</strong></div>
+          <input id="shareLink" style="width:100%;padding:8px;margin-top:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit" readonly>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn" id="copyBtn">Copier</button>
+            <button class="btn secondary" id="openBtn">Ouvrir dans un nouvel onglet</button>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02)">
+          <small>Conseils :</small>
+          <ul style="margin:6px 0 0 18px;color:#dbe9df">
+            <li>Utilise le bouton "Générer un lien secret" pour créer une URL à partager.</li>
+            <li>Le lien contient un jeton dans le hash (#) : qui a le lien verra l'image dévoilée par clics.</li>
+            <li>Si tu veux que seules certaines personnes voient, partage uniquement le lien généré.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <small>Prototype gratuit — place ce fichier HTML et ton image (puzzle.jpg) ensemble sur un hébergement (GitHub Pages, Netlify, ou ton ordinateur).</small>
+    </footer>
+  </div>
+
+<script>
+// Config
+const COLS = 6; // 6 x 4 = 24
+const ROWS = 4;
+const TOTAL = COLS * ROWS;
+let imageSrc = 'puzzle.jpg'; // default filename: replace or upload
+
+const board = document.getElementById('board');
+const status = document.getElementById('status');
+const shareLink = document.getElementById('shareLink');
+const genLink = document.getElementById('genLink');
+const copyBtn = document.getElementById('copyBtn');
+const openBtn = document.getElementById('openBtn');
+const resetBtn = document.getElementById('resetBtn');
+const fileInput = document.getElementById('file');
+
+// State: which cells are revealed (0..TOTAL-1)
+let revealed = new Set();
+
+function pad(n){return n<10? '0'+n:''+n}
+
+function buildBoard(img){
+  board.innerHTML='';
+  const imgEl = document.createElement('img');
+  imgEl.src = img;
+  imgEl.onload = ()=>{
+    status.textContent = 'Image chargée';
+    // create cells
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        const idx = r*COLS + c;
+        const cell = document.createElement('div');
+        cell.className='cell';
+        cell.dataset.idx = idx;
+        // create clipped image
+        const tile = document.createElement('div');
+        tile.style.width='100%';tile.style.height='100%';tile.style.overflow='hidden';
+        const tileImg = document.createElement('img');
+        tileImg.src = img;
+        // set object-position to crop correct region
+        const xPct = (c/(COLS-1))*100;
+        const yPct = (r/(ROWS-1))*100;
+        tileImg.style.objectPosition = `${xPct}% ${yPct}%`;
+        tileImg.style.objectFit = 'cover';
+        tile.appendChild(tileImg);
+
+        const mask = document.createElement('div');
+        mask.className='mask';
+        mask.textContent = pad(idx+1);
+
+        cell.appendChild(tile);
+        cell.appendChild(mask);
+
+        cell.addEventListener('click',()=>{
+          if(cell.classList.contains('revealed')) return;
+          cell.classList.add('revealed');
+          cell.querySelector('.mask').style.display='none';
+          revealed.add(idx);
+        });
+
+        board.appendChild(cell);
+      }
+    }
+
+    // restore revealed if token present
+    applyRevealedFromHash();
+  };
+  imgEl.onerror = ()=>{status.textContent='Impossible de charger l\'image (place un fichier nommé puzzle.jpg ou téléverse une image).'}
+}
+
+function applyRevealedFromHash(){
+  const hash = location.hash.replace('#','');
+  if(!hash) return;
+  // expected format: token|revealedCSV optionally
+  const parts = hash.split('|');
+  if(parts[1]){
+    const arr = parts[1].split(',').map(x=>parseInt(x)).filter(n=>!isNaN(n));
+    arr.forEach(i=>{
+      const cell = board.querySelector(`.cell[data-idx='${i}']`);
+      if(cell){cell.classList.add('revealed');cell.querySelector('.mask').style.display='none';revealed.add(i)}
+    });
+  }
+}
+
+// Generate a secret token and set link
+function genSecretLink(){
+  const token = Math.random().toString(36).slice(2,10);
+  // we keep revealed indices empty initially
+  const h = token + '|' + Array.from(revealed).join(',');
+  const url = location.href.split('#')[0] + '#' + h;
+  shareLink.value = url;
+  navigator.clipboard?.writeText(url).catch(()=>{});
+}
+
+// Copy current link
+copyBtn.addEventListener('click',()=>{
+  if(shareLink.value) navigator.clipboard.writeText(shareLink.value).then(()=>alert('Lien copié')); else alert('Génère d'abord un lien');
+});
+openBtn.addEventListener('click',()=>{
+  if(shareLink.value) window.open(shareLink.value,'_blank'); else alert('Génère d'abord un lien');
+});
+
+// when user clicks generate: take current revealed set and create hash
+genLink.addEventListener('click',()=>{
+  // ensure we have a token
+  const token = Math.random().toString(36).slice(2,10);
+  const h = token + '|' + Array.from(revealed).join(',');
+  const url = location.href.split('#')[0] + '#' + h;
+  shareLink.value = url;
+  status.textContent = 'Lien généré — partage le lien seulement avec les personnes choisies';
+});
+
+resetBtn.addEventListener('click',()=>{
+  if(!confirm('Réinitialiser toutes les cases révélées ?')) return;
+  revealed.clear();
+  board.querySelectorAll('.cell').forEach(cell=>{cell.classList.remove('revealed');cell.querySelector('.mask').style.display='flex'});
+  status.textContent = 'Réinitialisé';
+});
+
+fileInput.addEventListener('change',(e)=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    imageSrc = ev.target.result;
+    buildBoard(imageSrc);
+  };
+  reader.readAsDataURL(f);
+});
+
+// If loaded with a hash, allow viewer to reveal by clicks but also persist revealed list into hash for sharing
+function updateHashFromRevealed(){
+  const token = (location.hash.replace('#','')||'').split('|')[0] || Math.random().toString(36).slice(2,8);
+  const h = token + '|' + Array.from(revealed).join(',');
+  history.replaceState(null,null,'#'+h);
+}
+
+// observe clicks to update hash
+board.addEventListener('click',(e)=>{
+  const cell = e.target.closest('.cell');
+  if(!cell) return;
+  if(cell.classList.contains('revealed')) return;
+  const idx = parseInt(cell.dataset.idx);
+  revealed.add(idx);
+  setTimeout(updateHashFromRevealed,200);
+});
+
+// load default image (the uploaded file from the user should be saved as puzzle.jpg next to this html file)
+// If the hosting environment provides the developer uploaded file, it will work. Otherwise, user can upload via the input.
+buildBoard(imageSrc);
+
+// If page has a hash with revealed list and token, load that list for viewers
+(function(){
+  const h = location.hash.replace('#','');
+  if(h){
+    shareLink.value = location.href;
+    status.textContent = 'Accès via lien secret';
+  } else {
+    status.textContent = 'Mode éditeur — tu peux téléverser une image et générer un lien secret';
+  }
+})();
+
+</script>
+</body>
+</html>
